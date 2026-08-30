@@ -2,15 +2,22 @@
 // Recebe o webhook "BOOKING_CREATED" do Cal.com, identifica o lead certo no Kommo
 // (via ?metadata[kommo_lead_id]= no link enviado pelo bot) e:
 //   1. Preenche campos personalizados do lead com data/hora e link da reunião
-//   2. Move o lead para a etapa "Marcação de Reunião"
+//   2. Move o lead para a etapa "Marcação de Reunião (Bot)" — NÃO a etapa
+//      definitiva "Marcação de Reunião". Essa etapa (Bot) é uma sala de espera:
+//      o responsável liga pra confirmar que o lead é qualificado de verdade antes
+//      de avançá-lo manualmente (Leads Qualificados → Marcação de Reunião real).
+//      Isso existe pra "Total de Agendados" no dashboard continuar significando
+//      "reunião confirmada por humano", não "qualquer clique no link do Cal.com".
 //   3. Aplica a tag "agendado_calcom" (cor de destaque configurada no Kommo),
 //      só para diferenciar visualmente de leads agendados manualmente por um humano
 //
 // Quem manda a mensagem de confirmação de fato é um Salesbot pequeno e dedicado,
 // disparado pelo gatilho nativo "Imediatamente quando lead passa para uma etapa de
-// funil" — NÃO este script. Isso é necessário porque a API de Chats do Kommo não
-// permite que um sistema externo injete mensagem direto no canal do WhatsApp já
-// conectado; só o próprio Kommo (manualmente ou via Salesbot) pode enviar por esse canal.
+// funil" (configurado para disparar ao entrar em "Marcação de Reunião (Bot)",
+// não mais na etapa definitiva) — NÃO este script. Isso é necessário porque a API
+// de Chats do Kommo não permite que um sistema externo injete mensagem direto no
+// canal do WhatsApp já conectado; só o próprio Kommo (manualmente ou via Salesbot)
+// pode enviar por esse canal.
 //
 // Descartado: gatilho "Agendamento criado" (só reage a agendamento feito pelo cliente
 // através da Página de Agendamentos nativa, que é recurso exclusivo do plano Pro) e
@@ -22,7 +29,10 @@
 //   KOMMO_TOKEN=seu-token-de-api
 //   KOMMO_CAMPO_DATA_REUNIAO_ID=<id do campo personalizado de texto/data>
 //   KOMMO_CAMPO_LINK_REUNIAO_ID=<id do campo personalizado de texto>
-//   KOMMO_ETAPA_MARCACAO_REUNIAO_ID=<id numérico da etapa "Marcação de Reunião" no funil>
+//   KOMMO_ETAPA_MARCACAO_REUNIAO_BOT_ID=<id numérico da etapa "Marcação de Reunião (Bot)">
+//     (valor atual desta conta: 111036852 — NÃO é mais a etapa definitiva de
+//     Marcação de Reunião; essa agora só recebe leads movidos manualmente,
+//     depois da ligação de confirmação)
 //   PORT=3000 (ou o que o Render definir)
 
 require('dotenv').config();
@@ -36,7 +46,9 @@ const KOMMO_BASE = `https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4`;
 
 const CAMPO_DATA_REUNIAO_ID = process.env.KOMMO_CAMPO_DATA_REUNIAO_ID;
 const CAMPO_LINK_REUNIAO_ID = process.env.KOMMO_CAMPO_LINK_REUNIAO_ID;
-const ETAPA_MARCACAO_REUNIAO_ID = process.env.KOMMO_ETAPA_MARCACAO_REUNIAO_ID;
+// Etapa "Marcação de Reunião (Bot)" — sala de espera, não a definitiva.
+// ID atual desta conta: 111036852.
+const ETAPA_MARCACAO_REUNIAO_BOT_ID = process.env.KOMMO_ETAPA_MARCACAO_REUNIAO_BOT_ID;
 
 // Proteção contra entregas duplicadas do mesmo agendamento (ex: se o Cal.com reenviar
 // o webhook porque o servidor demorou a responder na primeira tentativa, já que o
@@ -103,13 +115,16 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
     const linkReuniao = booking?.videoCallData?.url || '';
     const dataISO = paraISOComOffsetRecife(inicio);
 
-    // Preenche os campos, move para Marcação de Reunião e aplica a tag de origem.
-    // A mudança de etapa é o que dispara o Salesbot de confirmação no Kommo.
+    // Preenche os campos, move para Marcação de Reunião (Bot) — sala de espera,
+    // não a etapa definitiva — e aplica a tag de origem. A mudança de etapa é o
+    // que dispara o Salesbot de confirmação no Kommo. O avanço pra Marcação de
+    // Reunião de verdade (e antes disso, Leads Qualificados) continua manual,
+    // feito pelo responsável depois da ligação de confirmação.
     const kommoResponse = await fetch(`${KOMMO_BASE}/leads/${leadId}`, {
       method: 'PATCH',
       headers: kommoHeaders(),
       body: JSON.stringify({
-        status_id: Number(ETAPA_MARCACAO_REUNIAO_ID),
+        status_id: Number(ETAPA_MARCACAO_REUNIAO_BOT_ID),
         custom_fields_values: [
           {
             field_id: Number(CAMPO_DATA_REUNIAO_ID),
@@ -139,7 +154,7 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
 
     if (bookingId) bookingsJaProcessados.add(bookingId);
 
-    console.log(`Lead ${leadId}: movido para Marcação de Reunião, tag agendado_calcom aplicada, reunião em ${dataFormatada}.`);
+    console.log(`Lead ${leadId}: movido para Marcação de Reunião (Bot), tag agendado_calcom aplicada, reunião em ${dataFormatada}. Aguardando ligação de confirmação.`);
     res.status(200).send('ok');
   } catch (err) {
     console.error('Erro processando webhook do Cal.com:', err);
