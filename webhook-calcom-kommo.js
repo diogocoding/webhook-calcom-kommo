@@ -55,6 +55,21 @@ function kommoHeaders() {
   };
 }
 
+// O Kommo exige data/hora em formato ISO com offset explícito de fuso, tipo
+// "2026-08-31T13:20:00-03:00" — não aceita string livre nem formato brasileiro.
+// Recife não observa horário de verão atualmente, então o offset fica fixo em -03:00.
+function paraISOComOffsetRecife(date) {
+  const local = new Date(date.getTime() - 3 * 60 * 60 * 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  const yyyy = local.getUTCFullYear();
+  const mm = pad(local.getUTCMonth() + 1);
+  const dd = pad(local.getUTCDate());
+  const hh = pad(local.getUTCHours());
+  const mi = pad(local.getUTCMinutes());
+  const ss = pad(local.getUTCSeconds());
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}-03:00`;
+}
+
 app.post('/webhooks/calcom-booking', async (req, res) => {
   try {
     const payload = req.body;
@@ -82,18 +97,7 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
     });
 
     const linkReuniao = booking?.videoCallData?.url || '';
-
-    // DEBUG TEMPORÁRIO — testa se o token consegue LER esse lead antes de tentar
-    // escrever nele. Se o GET funcionar e o PATCH continuar dando 401, isola o
-    // problema como falta de permissão de escrita, não do token/domínio em si.
-    const testeLeitura = await fetch(`${KOMMO_BASE}/leads/${leadId}`, {
-      method: 'GET',
-      headers: kommoHeaders(),
-    });
-    console.log(`DEBUG — teste de leitura do lead ${leadId}: status ${testeLeitura.status}`);
-    if (!testeLeitura.ok) {
-      console.log('DEBUG — corpo da resposta de leitura:', await testeLeitura.text());
-    }
+    const dataISO = paraISOComOffsetRecife(inicio);
 
     // Preenche os campos, move para Marcação de Reunião e aplica a tag de origem.
     // A mudança de etapa é o que dispara o Salesbot de confirmação no Kommo.
@@ -105,7 +109,7 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
         custom_fields_values: [
           {
             field_id: Number(CAMPO_DATA_REUNIAO_ID),
-            values: [{ value: dataFormatada }],
+            values: [{ value: dataISO }],
           },
           {
             field_id: Number(CAMPO_LINK_REUNIAO_ID),
