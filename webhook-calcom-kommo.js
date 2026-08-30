@@ -65,19 +65,12 @@ function kommoHeaders() {
   };
 }
 
-// O Kommo exige data/hora em formato ISO com offset explícito de fuso, tipo
-// "2026-08-31T13:20:00-03:00" — não aceita string livre nem formato brasileiro.
-// Recife não observa horário de verão atualmente, então o offset fica fixo em -03:00.
-function paraISOComOffsetRecife(date) {
-  const local = new Date(date.getTime() - 3 * 60 * 60 * 1000);
-  const pad = (n) => String(n).padStart(2, '0');
-  const yyyy = local.getUTCFullYear();
-  const mm = pad(local.getUTCMonth() + 1);
-  const dd = pad(local.getUTCDate());
-  const hh = pad(local.getUTCHours());
-  const mi = pad(local.getUTCMinutes());
-  const ss = pad(local.getUTCSeconds());
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}-03:00`;
+// Campos personalizados do Kommo do tipo "Data" ou "Data e hora" exigem o valor
+// como timestamp Unix (segundos desde 1970-01-01 UTC) — não como string ISO.
+// Um timestamp Unix já representa um instante exato no tempo, então não precisa
+// de nenhum cálculo manual de offset de fuso horário: o JS já entende isso.
+function paraTimestampUnix(date) {
+  return Math.floor(date.getTime() / 1000);
 }
 
 app.post('/webhooks/calcom-booking', async (req, res) => {
@@ -113,7 +106,7 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
     });
 
     const linkReuniao = booking?.videoCallData?.url || '';
-    const dataISO = paraISOComOffsetRecife(inicio);
+    const dataTimestamp = paraTimestampUnix(inicio);
 
     // Preenche os campos, move para Marcação de Reunião (Bot) — sala de espera,
     // não a etapa definitiva — e aplica a tag de origem. A mudança de etapa é o
@@ -128,7 +121,7 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
         custom_fields_values: [
           {
             field_id: Number(CAMPO_DATA_REUNIAO_ID),
-            values: [{ value: dataISO }],
+            values: [{ value: dataTimestamp }],
           },
           {
             field_id: Number(CAMPO_LINK_REUNIAO_ID),
