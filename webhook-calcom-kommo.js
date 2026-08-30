@@ -32,11 +32,26 @@ app.use(express.json());
 
 const KOMMO_SUBDOMAIN = process.env.KOMMO_SUBDOMAIN;
 const KOMMO_TOKEN = process.env.KOMMO_TOKEN;
-const KOMMO_BASE = `https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4`;
+
+// TESTE: o token informa, dentro dele mesmo (campo "api_domain" do JWT decodificado),
+// que espera ser usado em api-g.kommo.com — um gateway global — em vez do endereço
+// tradicional por subdomínio. Trocando para testar essa hipótese do 401.
+const KOMMO_BASE = `https://api-g.kommo.com/api/v4`;
+// const KOMMO_BASE = `https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4`; // versão anterior, comentada pra comparação
 
 const CAMPO_DATA_REUNIAO_ID = process.env.KOMMO_CAMPO_DATA_REUNIAO_ID;
 const CAMPO_LINK_REUNIAO_ID = process.env.KOMMO_CAMPO_LINK_REUNIAO_ID;
 const ETAPA_MARCACAO_REUNIAO_ID = process.env.KOMMO_ETAPA_MARCACAO_REUNIAO_ID;
+
+// DEBUG TEMPORÁRIO — remover depois de resolver o 401.
+// Mostra só um pedacinho do token (nunca o token inteiro nos logs), pra confirmar
+// se a variável de ambiente está mesmo chegando certa dentro do código.
+console.log('--- DEBUG das variáveis de ambiente ---');
+console.log('KOMMO_SUBDOMAIN:', JSON.stringify(KOMMO_SUBDOMAIN));
+console.log('KOMMO_TOKEN length:', KOMMO_TOKEN ? KOMMO_TOKEN.length : 'undefined/vazio');
+console.log('KOMMO_TOKEN começa com:', KOMMO_TOKEN ? KOMMO_TOKEN.slice(0, 15) : 'undefined/vazio');
+console.log('KOMMO_TOKEN termina com:', KOMMO_TOKEN ? KOMMO_TOKEN.slice(-6) : 'undefined/vazio');
+console.log('----------------------------------------');
 
 function kommoHeaders() {
   return {
