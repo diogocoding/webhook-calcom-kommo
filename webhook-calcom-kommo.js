@@ -38,15 +38,13 @@ const CAMPO_DATA_REUNIAO_ID = process.env.KOMMO_CAMPO_DATA_REUNIAO_ID;
 const CAMPO_LINK_REUNIAO_ID = process.env.KOMMO_CAMPO_LINK_REUNIAO_ID;
 const ETAPA_MARCACAO_REUNIAO_ID = process.env.KOMMO_ETAPA_MARCACAO_REUNIAO_ID;
 
-// DEBUG TEMPORÁRIO — remover depois de resolver o 401.
-// Mostra só um pedacinho do token (nunca o token inteiro nos logs), pra confirmar
-// se a variável de ambiente está mesmo chegando certa dentro do código.
-console.log('--- DEBUG das variáveis de ambiente ---');
-console.log('KOMMO_SUBDOMAIN:', JSON.stringify(KOMMO_SUBDOMAIN));
-console.log('KOMMO_TOKEN length:', KOMMO_TOKEN ? KOMMO_TOKEN.length : 'undefined/vazio');
-console.log('KOMMO_TOKEN começa com:', KOMMO_TOKEN ? KOMMO_TOKEN.slice(0, 15) : 'undefined/vazio');
-console.log('KOMMO_TOKEN termina com:', KOMMO_TOKEN ? KOMMO_TOKEN.slice(-6) : 'undefined/vazio');
-console.log('----------------------------------------');
+// Proteção contra entregas duplicadas do mesmo agendamento (ex: se o Cal.com reenviar
+// o webhook porque o servidor demorou a responder na primeira tentativa, já que o
+// plano free do Render "dorme" com inatividade). Guarda os IDs de reserva já
+// processados nesta execução do servidor — simples, mas resolve o caso comum.
+// Obs: reinicia a cada redeploy/hibernação; para garantia total, seria necessário
+// persistir isso em algum lugar externo (ex: um campo no próprio lead do Kommo).
+const bookingsJaProcessados = new Set();
 
 function kommoHeaders() {
   return {
@@ -87,6 +85,12 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
     if (!leadId) {
       console.error('Webhook do Cal.com sem kommo_lead_id — não foi possível linkar ao lead.', booking);
       return res.status(200).send('sem lead id — verificar geração do link no bot');
+    }
+
+    const bookingId = booking?.bookingId || booking?.uid;
+    if (bookingId && bookingsJaProcessados.has(bookingId)) {
+      console.log(`Booking ${bookingId} já foi processado antes — ignorando entrega duplicada do webhook.`);
+      return res.status(200).send('duplicata ignorada');
     }
 
     const inicio = new Date(booking.startTime);
@@ -132,6 +136,8 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
       console.error(`Kommo recusou a atualização do lead ${leadId}. Status: ${kommoResponse.status}. Resposta: ${kommoResponseBody}`);
       return res.status(200).send('kommo recusou a atualização, ver logs');
     }
+
+    if (bookingId) bookingsJaProcessados.add(bookingId);
 
     console.log(`Lead ${leadId}: movido para Marcação de Reunião, tag agendado_calcom aplicada, reunião em ${dataFormatada}.`);
     res.status(200).send('ok');
