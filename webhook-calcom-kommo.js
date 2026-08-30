@@ -75,7 +75,7 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
 
     // Preenche os campos, move para Marcação de Reunião e aplica a tag de origem.
     // A mudança de etapa é o que dispara o Salesbot de confirmação no Kommo.
-    await fetch(`${KOMMO_BASE}/leads/${leadId}`, {
+    const kommoResponse = await fetch(`${KOMMO_BASE}/leads/${leadId}`, {
       method: 'PATCH',
       headers: kommoHeaders(),
       body: JSON.stringify({
@@ -95,6 +95,17 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
         },
       }),
     });
+
+    const kommoResponseBody = await kommoResponse.text();
+
+    if (!kommoResponse.ok) {
+      // Isso é o que faltava antes: se o Kommo recusar o pedido (token inválido,
+      // ID de campo errado, status_id que não existe nesse funil, etc.), o fetch
+      // NÃO lança erro sozinho — precisa checar o status manualmente, senão o
+      // código segue como se tivesse dado certo.
+      console.error(`Kommo recusou a atualização do lead ${leadId}. Status: ${kommoResponse.status}. Resposta: ${kommoResponseBody}`);
+      return res.status(200).send('kommo recusou a atualização, ver logs');
+    }
 
     console.log(`Lead ${leadId}: movido para Marcação de Reunião, tag agendado_calcom aplicada, reunião em ${dataFormatada}.`);
     res.status(200).send('ok');
