@@ -32,12 +32,7 @@ app.use(express.json());
 
 const KOMMO_SUBDOMAIN = process.env.KOMMO_SUBDOMAIN;
 const KOMMO_TOKEN = process.env.KOMMO_TOKEN;
-
-// TESTE: o token informa, dentro dele mesmo (campo "api_domain" do JWT decodificado),
-// que espera ser usado em api-g.kommo.com — um gateway global — em vez do endereço
-// tradicional por subdomínio. Trocando para testar essa hipótese do 401.
-const KOMMO_BASE = `https://api-g.kommo.com/api/v4`;
-// const KOMMO_BASE = `https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4`; // versão anterior, comentada pra comparação
+const KOMMO_BASE = `https://${KOMMO_SUBDOMAIN}.kommo.com/api/v4`;
 
 const CAMPO_DATA_REUNIAO_ID = process.env.KOMMO_CAMPO_DATA_REUNIAO_ID;
 const CAMPO_LINK_REUNIAO_ID = process.env.KOMMO_CAMPO_LINK_REUNIAO_ID;
@@ -87,6 +82,18 @@ app.post('/webhooks/calcom-booking', async (req, res) => {
     });
 
     const linkReuniao = booking?.videoCallData?.url || '';
+
+    // DEBUG TEMPORÁRIO — testa se o token consegue LER esse lead antes de tentar
+    // escrever nele. Se o GET funcionar e o PATCH continuar dando 401, isola o
+    // problema como falta de permissão de escrita, não do token/domínio em si.
+    const testeLeitura = await fetch(`${KOMMO_BASE}/leads/${leadId}`, {
+      method: 'GET',
+      headers: kommoHeaders(),
+    });
+    console.log(`DEBUG — teste de leitura do lead ${leadId}: status ${testeLeitura.status}`);
+    if (!testeLeitura.ok) {
+      console.log('DEBUG — corpo da resposta de leitura:', await testeLeitura.text());
+    }
 
     // Preenche os campos, move para Marcação de Reunião e aplica a tag de origem.
     // A mudança de etapa é o que dispara o Salesbot de confirmação no Kommo.
